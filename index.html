@@ -1,0 +1,793 @@
+<html>
+
+<head>
+  <style>
+
+    @font-face {
+      font-family: "GeoSans";
+      src: url("../../lib/GeosansLight.ttf");
+    }
+    html{ color:#fff; background:#000; font-family:"GeoSans"; overflow:hidden }
+
+    #container{
+      width      : 100%;
+      height     : 100%;
+      position   : absolute;
+      top        : 0px;
+      left       : 0px;
+      background : #000;
+    }
+
+    #stats{
+      position  : absolute;
+      bottom    : -35px;
+
+      left      : 0px;
+      z-index   : 999;
+      opacity: .1;
+    }
+
+    a{
+      color: #fff;
+      position: absolute;
+      z-index: 999;
+    }
+
+    #loading{
+
+      width:100%;
+      text-align:center;
+      padding-top:100px;
+      font-size:25px;
+
+    }
+    
+    a{
+      color: #fff;
+      position: absolute;
+      z-index: 999;
+      bottom:5px;
+      right:10px;
+      text-decoration:none;
+      //underline:none;
+      opacity:.5;
+      font-size: 20px;
+    }
+
+    a:hover{
+
+      text-decoration:underline;
+      opacity:1;
+
+    }
+
+     #GUI{
+
+      position:fixed;
+      right:0px;
+      top:0px;
+      z-index:999;
+
+      }
+    
+    </style>
+</head>
+<body>
+
+  <div id="GUI"></div>
+  
+   <div id="description">
+
+     <a href="https://soundcloud.com/gidgeofficial/gidge-i-fell-in-love" target="_blank">
+      Gidge - I Fell In Love
+    </a>
+
+  </div>
+
+
+<script src = "lib/underscore.js"           ></script>
+<script src = "lib/three.js"                ></script>
+<script src = "lib/jquery.min.js"           ></script>
+<script src = "lib/stats.min.js"            ></script>
+<script src = "lib/TrackballControls.js"    ></script>
+<script src = "lib/ShaderLoader.js"         ></script>
+<script src = "lib/UserAudio.js"            ></script>
+<script src = "lib/Stream.js"               ></script>
+<script src = "lib/AudioController.js"      ></script>
+<script src = "lib/AudioTexture.js"         ></script>
+<script src = "lib/ObjectControls.js"       ></script>
+<script src = "lib/PhysicsRenderer.js"      ></script>
+<script src = "lib/ParticleUtils.js"        ></script>
+<script src = "lib/OBJLoader.js"            ></script>
+<script src = "lib/leap.js"                 ></script>
+<script src = "lib/dat.gui.min.js"          ></script>
+<script src = "Face.js"                     ></script>
+<script src = "GEM.js"                     ></script>
+
+<script src="fonts/helvetiker_bold.typeface.js"></script>
+<script src="fonts/helvetiker_regular.typeface.js"></script>
+<script src="Text.js"></script>
+
+<script>
+
+  console.log('Loading');
+
+  var container , camera, scene, renderer , stats;
+
+  
+  var sceneSize = 5;
+
+  var gem;
+
+  var rP
+  var PARAMS = {
+
+    simulation:{
+      repelers:{ type:"v3v" , value:[]},
+      velocities:{ type:"v3v" , value:[]},
+      aPower:{ type:"v3v" , value:[] },
+      repulsionPower:   { type:"f" , value: 10 },
+      repulsionRadius:  { type:"f" , value: 600 },
+      dampening:        { type:"f" , value: .95 },
+      
+    },
+
+    render:{
+      audioDisplacement:{ type:"f" , value : 0 },
+      lambTemp: { r:0 , b:0 , g:0 },
+      specTemp: { r:0 , b:0 , g:0 },
+      audioTemp: { r:0 , b:0 , g:0 },
+      custom1:{type:"f" , value: Math.random()},
+      custom2:{type:"f" , value: Math.random()},
+      custom3:{type:"f" , value: Math.random()},
+      c_lamb:{ type:"c" , value : new THREE.Color( 0xff0000 ) },
+      c_spec:{ type:"c" , value : new THREE.Color( 0x00ff00) },
+      c_audio:{ type:"c" , value : new THREE.Color( 0x0000ff ) },
+    },
+
+    vs:null,
+    fs:null,
+    ss:null,
+
+    geometry: new THREE.IcosahedronGeometry( 10 , 6 ),
+
+
+    time:{ type:"f" , value: 0 },
+    dT:{ type:"f" , value: 0 },
+    objectType:"sphere",
+    visualType:"fractal",
+    toggle:function(){
+
+      toggleRepelers();
+
+    },
+
+    materials:{
+
+    }
+
+
+
+  }
+
+  var gui = new dat.GUI({autoPlace:false});
+
+  gui.close();
+
+  var guiContainer = document.getElementById('GUI');
+  guiContainer.appendChild(gui.domElement);
+
+  guiSim    = gui.addFolder( 'Simulation' );
+  guiRender = gui.addFolder( 'Render' );
+
+
+  guiSim.add( PARAMS.simulation.repulsionPower , 'value' , -10 , 100).name( 'Repulsion Power' );
+  guiSim.add( PARAMS.simulation.repulsionRadius , 'value' , 10 , 1000).name( 'Repulsion Radius' );
+  guiSim.add( PARAMS.simulation.dampening , 'value' , .8 , .999 ).name( 'Dampenening' );
+
+  guiSim.add( PARAMS , 'toggle').name( 'toggleRepelers' );
+
+
+
+  guiSim.add( PARAMS, 'objectType' , [
+    'cube',
+    'sphere' , 
+    //'hand' , 
+    //'skull' , 
+    //'logo' ,
+    //'bieb' ,
+    //'rickAndBarney', 
+    //'ring', 
+    'torus' 
+  ] ).onChange( function(value){
+
+    recreateGeometry(value);
+    console.log(value);
+
+  });
+
+
+  guiRender.add( PARAMS.render.audioDisplacement , 'value' , -3 , 3).name( 'Audio Displacement' );
+  guiRender.add( PARAMS.render.custom1 , 'value' , 0 , 1).name( 'Custom1' );
+  guiRender.add( PARAMS.render.custom2 , 'value' , 0 , 1).name( 'Custom2' );
+  guiRender.add( PARAMS.render.custom3 , 'value' , 0 , 1).name( 'Custom3' );
+  
+  guiRender.addColor( PARAMS.render , 'lambTemp' ).name( 'Lambert' ).onChange( function( value ){
+
+    PARAMS.render.c_lamb.value.r =value.r / 256;
+    PARAMS.render.c_lamb.value.g =value.g / 256;
+    PARAMS.render.c_lamb.value.b =value.b / 256;
+    
+  }).listen();
+
+  guiRender.addColor( PARAMS.render , 'specTemp' ).name( 'Specular' ).onChange( function( value ){
+
+    PARAMS.render.c_spec.value.r =value.r / 256;
+    PARAMS.render.c_spec.value.g =value.g / 256;
+    PARAMS.render.c_spec.value.b =value.b / 256;
+    
+  }).listen();
+
+   guiRender.addColor( PARAMS.render , 'audioTemp' ).name( 'Fresnel?' ).onChange( function( value ){
+
+    PARAMS.render.c_audio.value.r =value.r / 256;
+    PARAMS.render.c_audio.value.g =value.g / 256;
+    PARAMS.render.c_audio.value.b =value.b / 256;
+    
+  }).listen();
+
+
+  PARAMS.render.lambTemp.r = PARAMS.render.c_lamb.value.r * 256;
+  PARAMS.render.lambTemp.g = PARAMS.render.c_lamb.value.g * 256;
+  PARAMS.render.lambTemp.b = PARAMS.render.c_lamb.value.b * 256;
+
+  PARAMS.render.specTemp.r = PARAMS.render.c_spec.value.r * 256;
+  PARAMS.render.specTemp.g = PARAMS.render.c_spec.value.g * 256;
+  PARAMS.render.specTemp.b = PARAMS.render.c_spec.value.b * 256;
+
+  PARAMS.render.audioTemp.r = PARAMS.render.c_audio.value.r * 256;
+  PARAMS.render.audioTemp.g = PARAMS.render.c_audio.value.g * 256;
+  PARAMS.render.audioTemp.b = PARAMS.render.c_audio.value.b * 256;
+
+
+
+
+  guiRender.add( PARAMS,'visualType' , [  
+    'plastic' , 
+    'wireframe' , 
+    'striped' , 
+    'ambient',
+    'fractal'
+  ]).onChange(function(value){
+
+   // recreateMaterial( value );
+
+  });
+  var tv1 = new THREE.Vector3();
+  var tv2 = new THREE.Vector3();
+  var repelerMeshes = [];
+  var repelersHidden = true;
+
+  var mouse = new THREE.Vector2();
+  var oMouse = mouse.clone();
+
+  var camRotation = 0;
+  var camTheta = 0;
+
+
+  var loaded = 0;
+  var neededToLoad = 2;
+
+  var waterRender = { type:"f" ,value:0}
+
+  var clock = new THREE.Clock();
+
+  var audioController = new AudioController();
+  audioController.mute.gain.value = 0;
+
+  var controller = new Leap.Controller();
+  controller.connect();
+
+  var camUniforms;
+
+
+  var stream = new Stream(  'love.mp3',audioController  );
+  
+
+  var userAudio = new UserAudio( audioController );
+
+  userAudio.onStreamCreated = function(){
+
+    onLoad();
+
+  }
+  //var controller = new Leap.Controller();
+
+  var time = { type:"f" , value:0 }
+  var dT = { type:"f" , value:0 }
+  var t_audio = { type:"t" , value:audioController.texture}
+
+
+  var shaders = new ShaderLoader('shaders');
+
+  shaders.load( 'ss-ball' , 'ball' , 'simulation' );
+  
+  shaders.load( 'vs-plastic' , 'plastic' , 'vertex' );
+  shaders.load( 'fs-plastic' , 'plastic' , 'fragment' );
+  
+  shaders.load( 'vs-wireframe' , 'wireframe' , 'vertex' );
+  shaders.load( 'fs-wireframe' , 'wireframe' , 'fragment' );
+  
+  shaders.load( 'vs-striped' , 'striped' , 'vertex' );
+  shaders.load( 'fs-striped' , 'striped' , 'fragment' );
+  
+  
+  shaders.load( 'vs-ambient' , 'ambient' , 'vertex' );
+  shaders.load( 'fs-ambient' , 'ambient' , 'fragment' );
+  shaders.load( 'vs-fractal' , 'fractal' , 'vertex' );
+  shaders.load( 'fs-fractal' , 'fractal' , 'fragment' );
+  
+
+  shaders.shaderSetLoaded = function(){
+   onLoad();
+ }
+
+
+
+ /* var loader  = new THREE.OBJLoader();
+  loader.load( 'models/hand.obj' , function( obj ){
+
+    geometries['hand'] = obj.children[0].geometry;
+    onLoad();
+
+  });
+
+    var loader  = new THREE.OBJLoader();
+  loader.load( 'models/skull.obj' , function( obj ){
+
+    geometries['skull'] = obj.children[0].geometry;
+    onLoad();
+
+  });*/
+
+  /*  var loader  = new THREE.OBJLoader();
+  loader.load( 'models/logo.obj' , function( obj ){
+
+    geometries['logo'] = obj.children[0].geometry;
+    onLoad();
+
+  });*/
+
+  /*var loader  = new THREE.OBJLoader();
+  loader.load( 'models/bieb.obj' , function( obj ){
+
+    geometries['bieb'] = obj.children[0].geometry;
+    onLoad();
+
+  });*/
+
+
+
+  
+   var geometries = {
+
+    torus:new THREE.TorusGeometry( 10, 5, 80, 1000 ), 
+    sphere:new THREE.IcosahedronGeometry( 9 , 7 ), 
+    cube:new THREE.BoxGeometry( 15 , 15 , 15 , 150 , 150 , 150 ),
+    //rickAndBarney: new Text( 'cabbibo' ).geo
+
+  }
+
+  var materials = {
+
+
+
+  }
+
+  function init(){
+
+    materials.plastic = { 
+      vs: shaders.vertexShaders.plastic,
+      fs: shaders.fragmentShaders.plastic
+    }
+
+     materials.wireframe = { 
+      vs: shaders.vertexShaders.wireframe,
+      fs: shaders.fragmentShaders.wireframe
+    }
+
+    materials.striped = {
+      vs: shaders.vertexShaders.striped,
+      fs: shaders.fragmentShaders.striped
+    }
+
+    materials.ambient = {
+      vs: shaders.vertexShaders.ambient,
+      fs: shaders.fragmentShaders.ambient
+    }
+
+    materials.fractal = {
+      vs: shaders.vertexShaders.fractal,
+      fs: shaders.fragmentShaders.fractal
+    }
+
+
+
+    scene = new THREE.Scene();
+    
+    camera = new THREE.PerspectiveCamera( 
+      50 ,
+      window.innerWidth / window.innerHeight,
+      sceneSize / 100 ,
+      sceneSize * 4000
+    );
+
+    // placing our camera position so it can see everything
+    camera.position.z = 30 ;
+    camera.lookAt( new THREE.Vector3() );
+
+
+    camera.theta = 0;
+    camera.rotationSpeed = 0;
+
+
+    //controls.noPan = true;
+    //controls.noRoll = true;
+   // controls.noRotate = true; 
+
+    // Getting the container in the right location
+    container     = document.createElement( 'div' );
+    container.id  = 'container';
+    
+    document.body.appendChild( container );
+
+    // Getting the stats in the right position
+    stats = new Stats();
+    stats.domElement.id = 'stats';
+    document.body.appendChild( stats.domElement );
+
+
+    // Setting up our Renderer
+    renderer = new THREE.WebGLRenderer({ alpha: true });
+
+    renderer.setSize( window.innerWidth, window.innerHeight );
+    container.appendChild( renderer.domElement );
+    renderer.domElement.style.background="#000";
+    
+    controls = new THREE.TrackballControls( camera , renderer.domElement);
+
+
+    // Making sure our renderer is always the right size
+    window.addEventListener( 'resize', onWindowResize , false );
+    window.addEventListener( 'mousemove', onMouseMove , false );
+   
+
+    var obj = new THREE.Object3D();
+    objectControls = new ObjectControls( camera , obj , controller );
+  
+
+    var w = window.innerWidth ;
+    var h = window.innerHeight;
+  
+
+  
+    var g = new THREE.IcosahedronGeometry( .1 , 1 );
+    var m = new THREE.MeshNormalMaterial();
+
+    for( var i =0; i<25; i++ ){
+
+      var mesh = new THREE.Mesh( g , m );
+
+      var t = 2 * ( i / 25 ) * Math.PI;
+      var p = Math.random()  * 2 *   Math.PI;
+
+      mesh.position.copy( toCart( 12 , t , p ) );
+
+      mesh.velocity = new THREE.Vector3();
+
+     // scene.add( mesh );
+      PARAMS.simulation.repelers.value.push( mesh.position );
+      PARAMS.simulation.velocities.value.push( mesh.velocity );
+      PARAMS.simulation.aPower.value.push( new THREE.Vector3() );
+
+      repelerMeshes.push( mesh );
+
+    }
+
+    //recreateGeometry(PARAMS.objectType);
+    //recreateMaterial(PARAMS.visualType);
+
+    PARAMS.ss = shaders.simulationShaders.ball;
+    PARAMS.vs = shaders.vertexShaders.plastic;
+    PARAMS.fs = shaders.fragmentShaders.plastic;
+
+    console.log( PARAMS.ss );
+    console.log( PARAMS.vs );
+    console.log( PARAMS.fs );
+    gem = new GEM(PARAMS);
+    gem.addToScene();
+
+
+  }
+
+
+  function animate(){
+
+    objectControls.update();
+    audioController.update();
+
+    PARAMS.dT.value = clock.getDelta();
+    PARAMS.time.value += dT.value;
+
+    dT.value = PARAMS.dT.value;
+    time.value = PARAMS.time.value;
+    
+    gem.update();
+
+    stats.update();
+
+    controls.update();
+
+
+   
+    for( var i = 0; i < PARAMS.simulation.repelers.value.length; i++ ){
+       
+       /*var r1 = u.repelers.value[i];
+       var v1 = u.velocities.value[i];*/
+
+
+       var ind = i / (2 *  PARAMS.simulation.repelers.value.length); 
+       var fI = Math.floor( ind * audioController.analyzer.array.length );
+       var p = audioController.analyzer.array[ fI ];
+
+        PARAMS.simulation.aPower.value[i].x = p / 256;
+      
+
+
+       
+       //r1.add( v1 );
+
+      // v1.multiplyScalar( .95 + .05 * Math.sin( time.value ) );
+
+    }
+
+    var t = time.value;
+
+    renderer.render( scene , camera );
+
+    requestAnimationFrame( animate );
+
+  }
+
+  function updateCamera(){
+
+    camera.theta += camera.rotationSpeed;
+
+
+    var x = 2000 * Math.cos( camera.theta );
+    var z = 2000  * Math.sin( camera.theta );
+    camera.position.x = x;
+    camera.position.z = z;
+    camera.lookAt( new THREE.Vector3() );
+
+    camera.rotationSpeed  *= .95;
+
+    
+  }
+
+/*  function recreateGeometry( type ){
+
+    if( ball ){
+
+      ball.removeFromScene();
+
+      var vs = ball.vs;
+      var fs = ball.fs;
+      var ss = ball.ss;
+      
+     // ball = new Face( geometries[type] , ss , vs , fs , u );
+      ball = new GEM({
+        geometry: geometries[type],
+        ss:ss, 
+        vs:vs,
+        fs:fs,
+        u:u 
+      });
+
+      ball.addToScene();
+
+    }else{
+
+      var ss = shaders.simulationShaders.ball;
+      var vs = shaders.vertexShaders.ball;
+      var fs = shaders.fragmentShaders.ball;
+     // ball = new Face( geometries[type] , ss , vs , fs , u );
+      ball = new GEM({
+        geometry: geometries[type],
+        ss:ss, 
+        vs:vs,
+        fs:fs,
+        u:u 
+      });
+
+      ball.addToScene();
+
+
+
+    }
+
+  }
+
+
+  function recreateMaterial( type ){
+
+    if( ball ){
+
+      ball.removeFromScene();
+
+      var geo = ball.ogGeometry;
+      var ss = ball.ss;
+
+      var fs = materials[type].fs;
+      var vs = materials[type].vs;
+      
+      ball = new GEM({
+        geometry:geo,
+        ss:ss, 
+        vs:vs,
+        fs:fs,
+        u:u 
+      });
+
+      ball.addToScene();
+
+    }else{
+
+      var ss = shaders.simulationShaders.ball;
+     
+      var fs = materials[type].fs;
+      var vs = materials[type].vs;
+      
+      //ball = new Face( geometries['sphere'] , ss , vs , fs , u );
+
+      ball = new GEM({
+        geometry: geometries['sphere'],
+        ss:ss, 
+        vs:vs,
+        fs:fs,
+        u:u 
+      });
+
+      ball.addToScene();
+
+
+
+    }
+
+  }
+
+  function recreateGEM(){
+
+    if( gem ){
+      gem.removeFromScene();
+      // TODO: gem.die
+    } 
+
+    gem = new GEM( PARAMS );
+
+  }*/
+
+  function toggleRepelers(){
+
+    if( repelersHidden === true ){
+      for( var i = 0; i < repelerMeshes.length; i++ ){
+
+        scene.add( repelerMeshes[i] );
+
+      }
+    }else{
+
+      for( var i = 0; i < repelerMeshes.length; i++ ){
+
+        scene.remove( repelerMeshes[i] );
+
+      }
+
+
+    }
+
+    repelersHidden = !repelersHidden;
+
+  }
+
+  function hideRepelers(){
+
+    for( var i = 0; i < repelerMeshes.length; i++ ){
+
+      scene.add( repelerMeshes[i] );
+
+    }
+
+  }
+
+  function changeRepelerPositions( newPos ){
+
+
+    for( var i = 0; i < repelerMeshes.length; i++ ){
+
+      repelerMeshes.position.copy( newPos[i] );
+    }
+
+
+  }
+
+  function onMouseMove(e ){
+
+    oMouse.copy( mouse );
+    mouse.set( e.clientX , e.clientY );
+
+
+    var dif = (mouse.x - oMouse.x) / 1000;
+    var sign = dif < 0 ? -1 : 1;
+
+    camera.rotationSpeed += sign * dif * dif;
+
+
+
+  }
+
+  // Resets the renderer to be the proper size
+  function onWindowResize(){
+
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+
+
+    renderer.setSize( window.innerWidth, window.innerHeight );
+   
+    var dpr = devicePixelRatio || 1;
+
+    //camUniforms.SS.value.x = window.innerWidth * dpr;
+    //camUniforms.SS.value.y = window.innerHeight * dpr;
+
+
+  }
+
+
+  function onLoad(){
+
+
+    loaded ++;
+
+    console.log(loaded );
+    if( loaded === neededToLoad ){
+
+      init();
+      animate();
+      
+   
+      if( stream ){
+      
+        //stream.play();
+
+      }
+
+    }
+
+  }
+
+  function toCart( r , t , p ){
+
+    var x = r *(Math.sin(t))*(Math.cos(p));
+    var y = r *(Math.sin(t))*(Math.sin(p));
+    var z = r * (Math.cos(t));
+    return new THREE.Vector3(x,y,z);
+
+  }
+
+
+</script>
+
+
+</body>
+</html>
